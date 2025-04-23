@@ -10,14 +10,14 @@ dotenv.config();
 
 const app = express();
 app.use(cors({
-    origin:[process.env.CROS_ORIGIN],
-    credentials:true
+    origin: [process.env.CROS_ORIGIN],
+    credentials: true
 }));
 
 app.use(express.json());
 app.use(cookieParser());
 
-app.listen(process.env.PORT,()=>{
+app.listen(process.env.PORT, () => {
     console.log(`Server is running on port ${process.env.PORT}....`)
 });
 dbConnection();

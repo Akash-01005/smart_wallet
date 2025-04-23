@@ -9,6 +9,7 @@ const Savings = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showRelockModal, setShowRelockModal] = useState(false);
   const [selectedSavings, setSelectedSavings] = useState(null);
   const [totalSavings, setTotalSavings] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
@@ -21,6 +22,7 @@ const Savings = () => {
   });
   const [transferAmount, setTransferAmount] = useState('');
   const [error, setError] = useState('');
+  const [newLockDate, setNewLockDate] = useState('');
   const API_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:8000';
 
   useEffect(() => {
@@ -38,10 +40,37 @@ const Savings = () => {
         withCredentials: true,
       });
       console.log('Savings response:', res.data);
-      
+
       if (res.data && res.data.success && Array.isArray(res.data.data)) {
         setSavings(res.data.data);
         calculateTotalSavings(res.data.data);
+        
+        // Check for recently unlocked savings
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const recentlyUnlocked = res.data.data.find(saving => {
+          if (!saving.isLocked) {
+            const lockDate = new Date(saving.lockDate);
+            lockDate.setHours(0, 0, 0, 0);
+            
+            // If the lock date is today or yesterday, consider it recently unlocked
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            return lockDate >= yesterday && lockDate <= today;
+          }
+          return false;
+        });
+        
+        if (recentlyUnlocked) {
+          setSelectedSavings(recentlyUnlocked);
+          // Set minimum date to tomorrow
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          setNewLockDate(tomorrow.toISOString().split('T')[0]);
+          setShowRelockModal(true);
+        }
       } else {
         setSavings([]);
         setTotalSavings(0);
@@ -62,13 +91,13 @@ const Savings = () => {
         setWalletBalance(0);
         return;
       }
-      
+
       console.log('Fetching wallet balance from:', `${API_URL}/api/wallet/balance/${userId}`);
       const res = await axios.get(`${API_URL}/api/wallet/balance/${userId}`, {
         withCredentials: true,
       });
       console.log('Wallet balance response:', res.data);
-      
+
       if (res.data && res.data.balance) {
         setWalletBalance(res.data.balance);
       } else {
@@ -82,7 +111,7 @@ const Savings = () => {
 
   const calculateTotalSavings = (savingsData) => {
     if (!Array.isArray(savingsData)) return setTotalSavings(0);
-    
+
     const total = savingsData.reduce((sum, item) => sum + (item.amount || 0), 0);
     setTotalSavings(total);
   };
@@ -93,8 +122,8 @@ const Savings = () => {
       ...formData,
       [name]: value
     });
-    
-    
+
+
     if (name === 'amount') {
       setError('');
     }
@@ -102,27 +131,27 @@ const Savings = () => {
 
   const validateWalletBalance = (amount) => {
     const amountNum = parseFloat(amount);
-    
+
     if (isNaN(amountNum) || amountNum <= 0) {
       setError('Amount must be a positive number');
       return false;
     }
-    
+
     if (amountNum > walletBalance) {
       setError('Insufficient wallet balance');
       return false;
     }
-    
+
     return true;
   };
 
   const handleCreateSavings = async (e) => {
     e.preventDefault();
-    
+
     if (!validateWalletBalance(formData.amount)) {
       return;
     }
-    
+
     setLoading(true);
     try {
       console.log('Creating savings with data:', {
@@ -131,7 +160,7 @@ const Savings = () => {
         description: formData.description,
         lockDate: formData.lockDate
       });
-      
+
       const response = await axios.post(`${API_URL}/api/savings`, {
         name: formData.name,
         amount: parseFloat(formData.amount),
@@ -140,9 +169,9 @@ const Savings = () => {
       }, {
         withCredentials: true,
       });
-      
+
       console.log('Savings creation response:', response.data);
-      
+
       toast.success('Savings goal created successfully');
       setFormData({
         name: '',
@@ -163,20 +192,20 @@ const Savings = () => {
 
   const handleAddToSavings = async (e) => {
     e.preventDefault();
-    
+
     if (!validateWalletBalance(transferAmount)) {
       return;
     }
-    
+
     if (!selectedSavings) return;
-    
+
     setLoading(true);
     try {
-      await axios.put(`${API_URL}/api/savings/${selectedSavings._id}/add`, 
-        { amount: parseFloat(transferAmount) }, 
+      await axios.put(`${API_URL}/api/savings/${selectedSavings._id}/add`,
+        { amount: parseFloat(transferAmount) },
         { withCredentials: true }
       );
-      
+
       toast.success(`Added to ${selectedSavings.name} savings`);
       setTransferAmount('');
       setShowAddModal(false);
@@ -192,34 +221,34 @@ const Savings = () => {
 
   const handleWithdrawFromSavings = async (e) => {
     e.preventDefault();
-    
+
     if (!selectedSavings) return;
-    
-    
+
+
     if (isLocked(selectedSavings)) {
       setError(`Cannot withdraw until ${formatDate(selectedSavings.lockDate)}`);
       return;
     }
-    
+
     const amountNum = parseFloat(transferAmount);
-    
+
     if (isNaN(amountNum) || amountNum <= 0) {
       setError('Amount must be a positive number');
       return;
     }
-    
+
     if (amountNum > selectedSavings.amount) {
       setError('Insufficient savings balance');
       return;
     }
-    
+
     setLoading(true);
     try {
-      await axios.put(`${API_URL}/api/savings/${selectedSavings._id}/withdraw`, 
-        { amount: amountNum }, 
+      await axios.put(`${API_URL}/api/savings/${selectedSavings._id}/withdraw`,
+        { amount: amountNum },
         { withCredentials: true }
       );
-      
+
       toast.success(`Withdrawn from ${selectedSavings.name} savings`);
       setTransferAmount('');
       setError('');
@@ -235,27 +264,27 @@ const Savings = () => {
   };
 
   const handleDeleteSavings = async (id) => {
-    
+
     const savingToDelete = savings.find(saving => saving._id === id);
-    
+
     if (!savingToDelete) {
       toast.error('Savings not found');
       return;
     }
-    
-    
+
+
     if (isLocked(savingToDelete)) {
       toast.error(`Cannot delete savings until ${formatDate(savingToDelete.lockDate)}`);
       return;
     }
-    
+
     try {
       if (window.confirm('Are you sure you want to delete this savings goal?')) {
         setLoading(true);
         await axios.delete(`${API_URL}/api/savings/${id}`, {
           withCredentials: true,
         });
-        
+
         toast.success('Savings goal deleted successfully');
         fetchSavings();
         fetchWalletBalance();
@@ -280,11 +309,25 @@ const Savings = () => {
       toast.error(`Cannot withdraw until ${formatDate(saving.lockDate)}`);
       return;
     }
-    
+
     setSelectedSavings(saving);
     setTransferAmount('');
     setError('');
     setShowWithdrawModal(true);
+  };
+
+  const openLockModal = (saving) => {
+    if (isLocked(saving)) {
+      toast.info(`This savings is already locked until ${formatDate(saving.lockDate)}`);
+      return;
+    }
+
+    setSelectedSavings(saving);
+    // Set minimum date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setNewLockDate(tomorrow.toISOString().split('T')[0]);
+    setShowRelockModal(true);
   };
 
   const formatDate = (dateString) => {
@@ -293,21 +336,54 @@ const Savings = () => {
   };
 
   const isLocked = (saving) => {
-    return saving.isLocked && new Date() < new Date(saving.lockDate);
+    if (!saving.isLocked) return false;
+    
+    // Compare dates at day level precision
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const lockDate = new Date(saving.lockDate);
+    lockDate.setHours(0, 0, 0, 0);
+    
+    // Return true only if lock date is in the future
+    return lockDate >= today;
+  };
+
+  const handleRelockSavings = async (e) => {
+    e.preventDefault();
+    
+    if (!selectedSavings) return;
+    
+    setLoading(true);
+    try {
+      await axios.put(`${API_URL}/api/savings/${selectedSavings._id}/lock`,
+        { lockDate: newLockDate },
+        { withCredentials: true }
+      );
+
+      toast.success(`${selectedSavings.name} has been locked until ${formatDate(newLockDate)}`);
+      setShowRelockModal(false);
+      fetchSavings();
+    } catch (error) {
+      console.error('Error locking savings:', error.response?.data || error);
+      toast.error(error.response?.data?.message || 'Failed to lock savings');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Savings</h1>
-        <button 
+        <button
           onClick={() => setShowCreateModal(true)}
           className="bg-indigo-500 text-white py-2 px-4 rounded hover:bg-indigo-600"
         >
           Create New Goal
         </button>
       </div>
-      
+
       <div className="bg-white rounded-lg shadow p-6 mb-6">
         <div className="mb-4">
           <h2 className="text-xl font-semibold mb-2">Total Savings</h2>
@@ -317,14 +393,14 @@ const Savings = () => {
           <p>Available in wallet: ₹{walletBalance.toFixed(2)}</p>
         </div>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {savings && savings.length > 0 ? (
           savings.map((saving) => (
             <div key={saving._id} className="border rounded-lg p-4 bg-white shadow">
               <div className="flex justify-between items-start">
                 <h3 className="font-semibold text-lg mb-2">{saving.name}</h3>
-                <button 
+                <button
                   onClick={() => handleDeleteSavings(saving._id)}
                   className={`text-red-500 hover:text-red-700 ${isLocked(saving) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={isLocked(saving) || loading}
@@ -359,7 +435,7 @@ const Savings = () => {
                 </p>
               </div>
               <div className="flex space-x-2 mt-2">
-                <button 
+                <button
                   onClick={() => openAddModal(saving)}
                   className={`bg-green-500 text-white py-1 px-3 rounded text-sm hover:bg-green-600 flex-1 ${isLocked(saving) ? 'opacity-70' : ''}`}
                   disabled={loading}
@@ -367,7 +443,7 @@ const Savings = () => {
                 >
                   Add
                 </button>
-                <button 
+                <button
                   onClick={() => openWithdrawModal(saving)}
                   className={`bg-blue-500 text-white py-1 px-3 rounded text-sm hover:bg-blue-600 flex-1 ${isLocked(saving) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   disabled={isLocked(saving) || loading}
@@ -375,6 +451,16 @@ const Savings = () => {
                 >
                   Withdraw
                 </button>
+                {!isLocked(saving) && (
+                  <button
+                    onClick={() => openLockModal(saving)}
+                    className="bg-amber-500 text-white py-1 px-3 rounded text-sm hover:bg-amber-600 flex-1"
+                    disabled={loading}
+                    title="Lock this savings goal again"
+                  >
+                    Lock
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -385,7 +471,7 @@ const Savings = () => {
           </div>
         )}
       </div>
-      
+
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -471,7 +557,7 @@ const Savings = () => {
           </div>
         </div>
       )}
-      
+
       {showAddModal && selectedSavings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -521,7 +607,7 @@ const Savings = () => {
           </div>
         </div>
       )}
-      
+
       {showWithdrawModal && selectedSavings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -566,6 +652,52 @@ const Savings = () => {
                   disabled={loading}
                 >
                   {loading ? 'Withdrawing...' : 'Withdraw'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showRelockModal && selectedSavings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Your savings goal "{selectedSavings.name}" is now unlocked</h2>
+            <p className="mb-4 text-gray-700">Would you like to lock this savings goal again with a new lock date?</p>
+            <form onSubmit={handleRelockSavings}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Lock Date</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={newLockDate}
+                    onChange={(e) => setNewLockDate(e.target.value)}
+                    className="w-full p-2 border rounded"
+                    min={new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0]}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-amber-500">Note:</span> You won't be able to withdraw from this goal until the lock date
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRelockModal(false);
+                  }}
+                  className="bg-gray-300 text-gray-700 py-2 px-4 rounded hover:bg-gray-400"
+                  disabled={loading}
+                >
+                  No, Keep Unlocked
+                </button>
+                <button
+                  type="submit"
+                  className="bg-indigo-500 text-white py-2 px-4 rounded hover:bg-indigo-600"
+                  disabled={loading}
+                >
+                  {loading ? 'Locking...' : 'Lock Again'}
                 </button>
               </div>
             </form>

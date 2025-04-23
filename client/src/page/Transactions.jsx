@@ -9,37 +9,37 @@ const Transactions = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showSavingsOnly, setShowSavingsOnly] = useState(false);
-  
+
   useEffect(() => {
     if (user) {
       getTransactions(user._id);
     }
   }, [user]);
-  
+
   const filteredTransactions = transactions.filter(transaction => {
     // Filter by transaction type
     if (filter !== 'all' && transaction.type !== filter) {
       return false;
     }
-    
+
     // Filter savings-related transactions
     if (showSavingsOnly && !transaction.description?.toLowerCase().includes('savings')) {
       return false;
     }
-    
+
     // Filter by date range
     if (startDate && endDate) {
       const transactionDate = new Date(transaction.timestamp);
       const start = new Date(startDate);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999); // Set to end of day
-      
+
       return transactionDate >= start && transactionDate <= end;
     }
-    
+
     return true;
   });
-  
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleString('en-IN', {
@@ -65,14 +65,14 @@ const Transactions = () => {
         <div className="border-b px-4 py-3">
           <div className="flex justify-between items-center mb-3">
             <h2 className="font-semibold">Recent Transactions</h2>
-            <button 
+            <button
               onClick={resetFilters}
               className="text-sm text-indigo-600 hover:text-indigo-800"
             >
               Reset Filters
             </button>
           </div>
-          
+
           <div className="flex flex-col md:flex-row gap-3 mb-2">
             <div className="flex flex-1 flex-col sm:flex-row gap-2">
               <div className="flex-1">
@@ -100,12 +100,12 @@ const Transactions = () => {
                 />
               </div>
             </div>
-            
+
             <div className="sm:self-end">
               <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700 mb-1">
                 Transaction Type
               </label>
-              <select 
+              <select
                 id="type-filter"
                 className="w-full sm:w-auto border rounded p-1.5 text-sm focus:ring-indigo-500 focus:border-indigo-500"
                 value={filter}
@@ -117,7 +117,7 @@ const Transactions = () => {
               </select>
             </div>
           </div>
-          
+
           <div className="mt-3">
             <label className="inline-flex items-center cursor-pointer">
               <input
@@ -130,7 +130,7 @@ const Transactions = () => {
             </label>
           </div>
         </div>
-        
+
         <div className="p-4">
           {isLoading ? (
             <div className="text-center py-8">
